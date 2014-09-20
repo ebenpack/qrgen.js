@@ -1,0 +1,3 @@
+# QRGen #
+
+Generates QR codes.
