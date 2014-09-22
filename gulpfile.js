@@ -19,7 +19,8 @@ gulp.task('lint', function() {
 gulp.task('browserify', function() {
     gulp.src('src/' + appname + '.js')
         .pipe(browserify({
-            standalone: appname
+            debug: true,
+            standalone: 'QRCode'
         }))
         .pipe(gulp.dest('build'));
 });
