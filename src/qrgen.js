@@ -1,22 +1,7 @@
-// This example was created using Protovis & jQuery
-// Base64 provided by http://www.webtoolkit.info/javascript-base64.html
-// Modern web browsers have a builtin function to this as well 'btoa'
-// function encode_as_img_and_link(){
-//  // Add some critical information
-//  $("svg").attr({ version: '1.1' , xmlns:"http://www.w3.org/2000/svg"});
-
-//  var svg = $("#chart-canvas").html();
-//  var b64 = Base64.encode(svg); // or use btoa if supported
-
-//  // Works in recent Webkit(Chrome)
-//  $("body").append($("<img src='data:image/svg+xml;base64,\n"+b64+"' alt='file.svg'/>"));
-
-//  // Works in Firefox 3.6 and Webit and possibly any browser which supports the data-uri
-//  $("body").append($("<a href-lang='image/svg+xml' href='data:image/svg+xml;base64,\n"+b64+"' title='file.svg'>Download</a>"));
-// }
-
 var version_capacity_table = require('./version_capacity_table');
 var error_correction_codewords = require('./error_correction_codewords');
+var galois_field = require('./galois_field');
+var poly = require('./polynomial');
 
 function QRCode(text, correction_level){
     // Error correction level, default to "L"
@@ -27,6 +12,10 @@ function QRCode(text, correction_level){
     this.analyze();
     this.encode();
     this.error_correct();
+    // this.structure();
+    // this.module_placement();
+    // this.masking();
+    // this.version_info();
 }
 
 QRCode.prototype.analyze = function(){
@@ -122,7 +111,7 @@ QRCode.prototype.encode = function(){
         var binary = this.encode_kanji();
     }
     // Break Up into 8-bit Codewords and Add Pad Bytes if Necessary
-    var num_codewords = error_correction_codewords[this.version][this.ecl];
+    var num_codewords = error_correction_codewords[this.version][this.ecl]['totalcodewords'];
     var data = [];
     for (var i=0; i<binary.length; i+=8){
         this.data.push.apply(this.data, binary.slice(i,i+8).split(''));
@@ -186,6 +175,75 @@ QRCode.prototype.encode_bytes = function(){
 };
 QRCode.prototype.encode_kanji = function(){
     // TODO
+};
+QRCode.prototype.error_correct = function(){
+    //  Break Data Codewords into Blocks if Necessary
+    var group1 = [];
+    var group2 = [];
+
+    var num_g1blocks = error_correction_codewords[this.version][this.ecl]['g1blocks'];
+    var num_g1blockcodewords = error_correction_codewords[this.version][this.ecl]['g1blockcodewords'];
+    var num_g2blocks = error_correction_codewords[this.version][this.ecl]['g2blocks'];
+    var num_g2blockcodewords = error_correction_codewords[this.version][this.ecl]['g2blockcodewords'];
+    var index = 0;
+    for (var i=0; i<num_g1blocks;i++){
+        group1.push([]);
+        for (var j=0; j<num_g1blockcodewords;j++){
+            var block = this.data.slice(index, index+8);
+            group1[i].push(block);
+        }
+    }
+    if (num_g2blocks){
+        for (var i=0; i<num_g2blocks;i++){
+            group2.push([]);
+            for (var j=0; j<num_g2blockcodewords;j++){
+                var block = this.data.slice(index, index+8);
+                group2[i].push(block);
+            }
+        }
+    }
+
+    var eccodeblocks = error_correction_codewords[this.version][this.ecl]['eccodewordsperblock'];
+    var message_poly = [];
+    for (var i =0; i<this.data.length;i+=8){
+        var num = parseInt(this.data.slice(i, i+8).join(''), 2)
+        message_poly.push( num );
+    }
+    var gen_poly = poly.gen(eccodeblocks);
+    // var result = poly.div(message_poly, gen_poly);
+    var result = []
+    // encode
+    for (var i=0; i< eccodeblocks; i++){
+        result[i] = 0;
+    }
+    for (var i=0;i<message_poly.length; i++){
+        result[i] = message_poly[i]
+    }
+    for (var i=0;i<message_poly.length; i++){
+        var coef = result[i];
+        if (coef !== 0){
+            for (var j =0; j<gen_poly.length;j++){
+                result[i+j] ^= poly.gf_mul(gen_poly[j], coef)
+            }
+        }
+        result[i] = message_poly[i]
+    }
+    for (var i=0;i<message_poly.length; i++){
+        result[i] = message_poly[i]
+    }
+    debugger
+
+
+    // x^10 + α^251x^9 + α^67x^8 + α^46x^7 + α^61x^6 + α^118x^5 + α^70x^4 + α^64x^3 + α^94x^2 + α^32x + α^45
+
+    // Reed-Solomon
+        //  Overall, the steps of polynomial long division are:
+
+        // 1. Find the appropriate term to multiply the divisor by. The result of the multiplication should have the same first term as the the dividend (in the first multiplication step) or remainder (in all subsequent multiplication steps).
+        // 2. Subtract the result from the dividend (in the first multiplication step) or remainder (in all subsequent multiplication steps).
+        // 3. Repeat steps 1 and 2 until it is no longer possible to multiply by an integer, or in other words, it would be necessary to multiply by a fraction. The number at the bottom of the tableau is the remainder.
+
+
 };
 
 QRCode.prototype.initialize = function(){
@@ -310,7 +368,7 @@ function drawQR(QR, canvas, size){
 }
 
 function pad(str, len, padding, right){
-    // Pad a string to len with 0s
+    // Pad a string to specified length with padding character
     // Left pad by default, with optional right padding
     if (right){
         while (str.length < len){
